@@ -110,12 +110,13 @@ void update_best_known_score(double** particle_position, double** best_known_pos
 
 int main() {
 
+	//Seed random number generator
 	struct timeval time;
-    gettimeofday(&time,NULL);
-    srand((time.tv_sec* 1000) + (time.tv_usec / 1000));
+    	gettimeofday(&time,NULL);
+    	srand((time.tv_sec* 1000) + (time.tv_usec / 1000));
 
 	int i,j;
-	int swarm_size= 2000, number_of_dimensions = 30;
+	int swarm_size= 1000, number_of_dimensions = 5;
 	int max_iteration = 5000;
 
 	double** particle_position;
