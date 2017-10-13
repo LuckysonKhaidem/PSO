@@ -1,21 +1,20 @@
-#include <iostream>
+#include <Python.h>
 #include <stdlib.h>
 #include <sys/time.h>
 #include <math.h>
 #include <float.h>
 
-using namespace std;
+// /*Rosenbrock Function*/
+// double func(double* position, int number_of_dimensions) {
+// 	int i;
+// 	double result = 0;
+// 	for(i = 0;i < number_of_dimensions-1;i++) {
+// 		result += (100*pow(position[i+1] - position[i] * position[i],2) + pow(position[i] - 1,2));
 
-/*Rosenbrock Function*/
-double func(double* position, int number_of_dimensions) {
-	int i;
-	double result = 0;
-	for(i = 0;i < number_of_dimensions-1;i++) {
-		result += (100*pow(position[i+1] - position[i] * position[i],2) + pow(position[i] - 1,2));
+// 	}
+// 	return result;
+// }
 
-	}
-	return result;
-}
 
 double random_normal(double mean, double standard_deviation) {
 	double U = rand()/(double)RAND_MAX;
@@ -25,8 +24,17 @@ double random_normal(double mean, double standard_deviation) {
 
 }
 
+static PyObject* convert_into_python_list(double* particle_position, int number_of_dimensions) {
+	int i;
+	PyObject* result = PyList_New(0);
+	for(i = 0; i < number_of_dimensions;i++) {
+		PyList_Append(result,Py_BuildValue("d", particle_position[i]));
+	}
+	return result;
+}
+
 double** allocate_memory_to_matrix(int row, int column) {
-	int i,j;
+	int i;
 	double** matrix = (double**) calloc(row,sizeof(double*));
 	for(i =0 ; i < row;i++){
 		
@@ -53,23 +61,36 @@ void initalize_best_known_position(double** best_known_position, double** partic
 			best_known_position[i][j] = particle_position[i][j];
 }
 
-void calculate_score(double** particle_position, double* score, int swarm_size, int number_of_dimensions) {
+void calculate_score(PyObject* objective_function,double** particle_position, double* score, int swarm_size, int number_of_dimensions) {
 	int i;
-	for(i = 0; i < swarm_size;i++) score[i] = func(particle_position[i],number_of_dimensions);
+
+	for(i = 0; i < swarm_size;i++){
+
+		PyObject* particle_position_as_pylist = convert_into_python_list(particle_position[i],number_of_dimensions);
+		PyObject* arg = PyTuple_New(1);
+		
+		PyTuple_SetItem(arg,0,particle_position_as_pylist);
+		score[i] = PyFloat_AsDouble(PyEval_CallObject(objective_function, arg));
+		Py_DECREF(particle_position_as_pylist);
+		Py_DECREF(arg);
+	}
 }
 
-double find_best_position(double* g, double* current_score,double** particle_position, int swarm_size, int number_of_dimensions) {
+double find_best_position(double* g, double* current_score,double** particle_position,double* worst_score, int swarm_size, int number_of_dimensions) {
 	int i,best_index;
 	double best_score = DBL_MAX;
+	*worst_score = DBL_MIN;
 	for(i =0 ; i < swarm_size;i++) {
 		if(current_score[i] < best_score){
 			best_index = i;
 			best_score = current_score[i];
 		}
+		else if(current_score[i] > *worst_score) *worst_score = current_score[i];
 	}
 	for(i = 0 ; i< number_of_dimensions;i++) g[i] = particle_position[best_index][i];
 	return best_score;
 }
+
 void initialize_best_known_score(double* current_score, double* best_known_score, int swarm_size) {
 	int i;
 	for(i =0 ; i< swarm_size;i++) best_known_score[i] = current_score[i];
@@ -108,16 +129,21 @@ void update_best_known_score(double** particle_position, double** best_known_pos
 
 }
 
-int main() {
+static PyObject* run_pso(PyObject* self, PyObject* args, PyObject* kwargs) {
+
+	//Parameter names
+	static char* parameter_names[] = {"objective_function","swarm_size","number_of_dimensions","omega","c1","c2","tolerance","max_iteration",NULL};
 
 	//Seed random number generator
 	struct timeval time;
-    	gettimeofday(&time,NULL);
-    	srand((time.tv_sec* 1000) + (time.tv_usec / 1000));
+    gettimeofday(&time,NULL);
+    srand((time.tv_sec* 1000) + (time.tv_usec / 1000));
 
 	int i,j;
-	int swarm_size= 1000, number_of_dimensions = 5;
-	int max_iteration = 5000;
+	int swarm_size,number_of_dimensions;
+	int max_iteration;
+
+	double omega,c1,c2;
 
 	double** particle_position;
 	double** velocity;
@@ -126,10 +152,19 @@ int main() {
 	double* best_known_score;
 	double* g;
 
-		
+	double tolerance;
+	PyObject* objective_function;
 
-	double omega = 0.0, c1 =0.05, c2 =0.8;
-	double best_score;
+	if(!PyArg_ParseTupleAndKeywords(args,kwargs,"Oiiddddi",parameter_names,&objective_function,&swarm_size,&number_of_dimensions,&omega,&c1,&c2,&tolerance,&max_iteration)) {
+		PyErr_SetString(PyExc_TypeError, "Invalid Parameters");
+		return NULL;
+	}
+	if (!PyCallable_Check(objective_function)) {
+            PyErr_SetString(PyExc_TypeError, "objective_function must be a callable");
+            return NULL;
+     }
+
+	double best_score,worst_score;
 
 	
 	particle_position = allocate_memory_to_matrix(swarm_size,number_of_dimensions);
@@ -142,30 +177,46 @@ int main() {
 	g = (double*) malloc(sizeof(double)*number_of_dimensions);
 
 	
+	printf("Initializing...\n");
+	printf("Swarm Size: %d\n Number of Dimensions: %d\n Omega: %f\n C1: %f\n C2: %f\n",swarm_size,number_of_dimensions,omega,c1,c2);
 	initialize_particle_position(particle_position, swarm_size, number_of_dimensions);
+
 	initalize_best_known_position(best_known_position,particle_position, swarm_size, number_of_dimensions);
-	calculate_score(particle_position, current_score, swarm_size, number_of_dimensions);
+	calculate_score(objective_function,particle_position, current_score, swarm_size, number_of_dimensions);
 	initialize_best_known_score(current_score, best_known_score, swarm_size);
-	find_best_position(g,current_score,best_known_position, swarm_size, number_of_dimensions);
-	
+	find_best_position(g,current_score,best_known_position,&worst_score, swarm_size, number_of_dimensions);
 	initialize_velocity(velocity, swarm_size, number_of_dimensions);
 
+	printf("Running PSO..\n");
 	for(i =0; i < max_iteration;i++) {
-		update_position(particle_position,velocity,best_known_position,g,omega,c1,c2,swarm_size,number_of_dimensions);
-		calculate_score(particle_position, current_score, swarm_size, number_of_dimensions);
-		update_best_known_score(particle_position, best_known_position, current_score, best_known_score, swarm_size, number_of_dimensions);
-		best_score = find_best_position(g,best_known_score,best_known_position,swarm_size, number_of_dimensions);
 
-		cout<<"ITERATION: "<<i+1<<" BEST SCORE: "<<best_score<<"\n";
+		update_position(particle_position,velocity,best_known_position,g,omega,c1,c2,swarm_size,number_of_dimensions);
+		calculate_score(objective_function,particle_position, current_score, swarm_size, number_of_dimensions);
+		update_best_known_score(particle_position, best_known_position, current_score, best_known_score, swarm_size, number_of_dimensions);
+		best_score = find_best_position(g,best_known_score,best_known_position,&worst_score,swarm_size, number_of_dimensions);
+
+		// cout<<"ITERATION: "<<i+1<<" BEST SCORE: "<<best_score<<"\n";
+		printf("ITERATION: %d BEST SCORE: %f\n",i+1,best_score);
+		if((worst_score - best_score) <= tolerance) break;
 
 	}
 
-	cout<<"BEST PARTICLE\n";
-	cout<<"[ ";
-	for(i =0; i < number_of_dimensions;i++)cout<<g[i]<<" ";
-	cout<<"]\n"; 
-
-
+	PyObject* best_particle_position = convert_into_python_list(g, number_of_dimensions);
+	free(current_score);
+	free(best_known_score);
+	free(g);
+	return best_particle_position;
 
 }
+
+static PyMethodDef methods[] =  {
+	{"optimize",(PyCFunction)run_pso,METH_KEYWORDS | METH_VARARGS,NULL},
+	{NULL,NULL,0,NULL}
+};
+
+PyMODINIT_FUNC initpso(void) {
+	(void) Py_InitModule3("pso",methods,NULL);
+}
+
+
 
