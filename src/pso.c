@@ -137,8 +137,8 @@ static PyObject* run_pso(PyObject* self, PyObject* args, PyObject* kwargs) {
 
 	//Seed random number generator
 	struct timeval time;
-    gettimeofday(&time,NULL);
-    srand((time.tv_sec* 1000) + (time.tv_usec / 1000));
+    	gettimeofday(&time,NULL);
+    	srand((time.tv_sec* 1000) + (time.tv_usec / 1000));
 
 	int i,j;
 	int swarm_size,number_of_dimensions;
@@ -163,19 +163,19 @@ static PyObject* run_pso(PyObject* self, PyObject* args, PyObject* kwargs) {
 		return NULL;
 	}
 	if (!PyCallable_Check(objective_function)) {
-            PyErr_SetString(PyExc_TypeError, "objective_function must be a callable");
-            return NULL;
-     }
-    if(!PyList_Check(lower_bound) || !PyList_Check(upper_bound)) {
-    	PyErr_SetString(PyExc_TypeError, "lower_bound and upper_bound should be a list");
-        return NULL;
+            	PyErr_SetString(PyExc_TypeError, "objective_function must be a callable");
+            	return NULL;
+     	}
+    	if(!PyList_Check(lower_bound) || !PyList_Check(upper_bound)) {
+    		PyErr_SetString(PyExc_TypeError, "lower_bound and upper_bound should be a list");
+        	return NULL;
 
-    }
-    if(PyList_Size(lower_bound) != number_of_dimensions || PyList_Size(upper_bound) != number_of_dimensions) {
-    	PyErr_SetString(PyExc_TypeError, "The size of upper_bound and lower_bound should be equal to the number of number_of_dimensions");
-        return NULL;
+    	}	
+    	if(PyList_Size(lower_bound) != number_of_dimensions || PyList_Size(upper_bound) != number_of_dimensions) {
+    		PyErr_SetString(PyExc_TypeError, "The size of upper_bound and lower_bound should be equal to the number of number_of_dimensions");
+        	return NULL;
 
-    }
+    	}	
 	double best_score,worst_score;
 	double* ub = (double*)malloc(sizeof(double)*number_of_dimensions);
 	double* lb = (double*)malloc(sizeof(double)* number_of_dimensions);
